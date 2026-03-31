@@ -2,6 +2,7 @@
   "name": "Mkulima AI",
   "description": "An AI agricultural assistant for small-scale farmers in Kenya, providing advice on crop health, market prices, and farming practices in English, Swahili, and Sheng.",
   "requestFramePermissions": [
-    "camera"
+    "camera",
+    "microphone"
   ]
 }

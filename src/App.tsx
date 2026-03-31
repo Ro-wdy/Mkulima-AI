@@ -16,7 +16,10 @@ import {
   Loader2,
   User,
   Bot,
-  ChevronRight
+  ChevronRight,
+  Mic,
+  Square,
+  Volume2
 } from 'lucide-react';
 import { cn } from './lib/utils';
 
@@ -27,6 +30,7 @@ interface Message {
   role: 'user' | 'model';
   content: string;
   image?: string;
+  audio?: string;
 }
 
 const SYSTEM_INSTRUCTION = `You are an AI agricultural assistant for small-scale farmers in Kenya.
@@ -35,7 +39,7 @@ Your role is to help farmers make decisions about crop health, market prices, an
 Requirements:
 1. Always respond in a mix of simple English, Swahili, and Sheng depending on the user's tone.
 2. Keep responses practical, short, and actionable.
-3. If a farmer describes crop issues:
+3. If a farmer describes crop issues (via text or voice):
    - Identify the possible disease or problem
    - Explain the cause in simple terms
    - Suggest affordable local solutions (e.g., wood ash, neem oil, crop rotation)
@@ -47,26 +51,27 @@ Requirements:
 6. Always prioritize low-cost and locally available solutions.
 7. Use a friendly, supportive, and farmer-focused tone.
 8. If an image is provided, analyze it for crop diseases or pests.
-
-Example interactions:
-User: Mahindi yangu ina yellow leaves, shida ni nini?
-AI: Inaweza kuwa nitrogen deficiency ama disease kama maize streak virus. Jaribu kuongeza fertilizer kama CAN. Also check if kuna pests.
-
-User: Niuzaje nyanya leo?
-AI: Leo bei inaweza kuwa low kidogo. If possible, ngoja kesho or sell early morning. Target price: around KES 80–100 per kilo depending on market.`;
+9. If audio is provided, listen to the farmer's description and respond accordingly.`;
 
 export default function App() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'model',
-      content: "Habari mkulima! Mimi ni Mkulima AI. Naweza kukusaidia na mambo ya ukulima, magonjwa ya mimea, au bei ya soko. Una swali gani leo?"
+      content: "Habari mkulima! Mimi ni Mkulima AI. Naweza kukusaidia na mambo ya ukulima, magonjwa ya mimea, au bei ya soko. Una swali gani leo? Unaweza pia kurekodi sauti yako ukinielezea shida yako."
     }
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordedAudio, setRecordedAudio] = useState<string | null>(null);
+  const [recordingTime, setRecordingTime] = useState(0);
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const timerRef = useRef<number | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -75,6 +80,64 @@ export default function App() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    if (isRecording) {
+      timerRef.current = window.setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
+      setRecordingTime(0);
+    }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [isRecording]);
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setRecordedAudio(reader.result as string);
+        };
+        reader.readAsDataURL(audioBlob);
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      console.error("Error accessing microphone:", err);
+      alert("Samahani, siwezi kutumia microphone yako. Tafadhali angalia permissions.");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -94,53 +157,50 @@ export default function App() {
     }
   };
 
+  const clearAudio = () => {
+    setRecordedAudio(null);
+  };
+
   const handleSend = async () => {
-    if (!input.trim() && !selectedImage) return;
+    if (!input.trim() && !selectedImage && !recordedAudio) return;
 
     const userMessage: Message = {
       role: 'user',
-      content: input,
-      image: selectedImage || undefined
+      content: input || (recordedAudio ? "Voice message" : ""),
+      image: selectedImage || undefined,
+      audio: recordedAudio || undefined
     };
 
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     const currentImage = selectedImage;
+    const currentAudio = recordedAudio;
     setSelectedImage(null);
+    setRecordedAudio(null);
     setIsLoading(true);
 
     try {
-      const chat = ai.chats.create({
-        model: "gemini-3-flash-preview",
-        config: {
-          systemInstruction: SYSTEM_INSTRUCTION,
-        },
-        history: messages.map(m => ({
-          role: m.role,
-          parts: [{ text: m.content }]
-        }))
-      });
-
-      let response;
+      const parts: any[] = [{ text: input || "Sikiliza hii sauti na unisaidie." }];
+      
       if (currentImage) {
         const base64Data = currentImage.split(',')[1];
         const mimeType = currentImage.split(';')[0].split(':')[1];
-        
-        response = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
-          contents: {
-            parts: [
-              { text: input || "Analyze this crop image for issues." },
-              { inlineData: { data: base64Data, mimeType } }
-            ]
-          },
-          config: {
-            systemInstruction: SYSTEM_INSTRUCTION,
-          }
-        });
-      } else {
-        response = await chat.sendMessage({ message: input });
+        parts.push({ inlineData: { data: base64Data, mimeType } });
       }
+
+      if (currentAudio) {
+        const base64Data = currentAudio.split(',')[1];
+        const mimeType = currentAudio.split(';')[0].split(':')[1];
+        parts.push({ inlineData: { data: base64Data, mimeType } });
+      }
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: { parts },
+        config: {
+          systemInstruction: SYSTEM_INSTRUCTION,
+        }
+      });
 
       const modelResponse: Message = {
         role: 'model',
@@ -217,6 +277,13 @@ export default function App() {
                   referrerPolicy="no-referrer"
                 />
               )}
+              {msg.audio && (
+                <div className="flex items-center gap-2 mb-3 bg-white/20 p-2 rounded-xl">
+                  <Volume2 className="w-4 h-4" />
+                  <span className="text-xs font-medium">Sauti iliyorekodiwa</span>
+                  <audio src={msg.audio} controls className="h-8 w-40" />
+                </div>
+              )}
               <div className="markdown-body">
                 <ReactMarkdown>{msg.content}</ReactMarkdown>
               </div>
@@ -235,7 +302,7 @@ export default function App() {
       {/* Input Area */}
       <footer className="p-4 bg-white border-t border-gray-200">
         {/* Quick Actions */}
-        {messages.length < 3 && (
+        {messages.length < 3 && !isRecording && (
           <div className="flex gap-2 overflow-x-auto pb-4 no-scrollbar">
             {quickActions.map((action, i) => (
               <button
@@ -250,58 +317,98 @@ export default function App() {
           </div>
         )}
 
-        {/* Image Preview */}
-        {selectedImage && (
-          <div className="relative inline-block mb-4">
-            <img 
-              src={selectedImage} 
-              alt="Preview" 
-              className="w-20 h-20 object-cover rounded-xl border-2 border-[#30B54A]"
-              referrerPolicy="no-referrer"
-            />
-            <button 
-              onClick={clearImage}
-              className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg"
-            >
-              <X className="w-3 h-3" />
-            </button>
-          </div>
-        )}
+        {/* Previews */}
+        <div className="flex gap-4 mb-4">
+          {selectedImage && (
+            <div className="relative inline-block">
+              <img 
+                src={selectedImage} 
+                alt="Preview" 
+                className="w-20 h-20 object-cover rounded-xl border-2 border-[#30B54A]"
+                referrerPolicy="no-referrer"
+              />
+              <button 
+                onClick={clearImage}
+                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+          {recordedAudio && (
+            <div className="relative inline-block bg-[#f5f5f0] p-3 rounded-xl border-2 border-[#30B54A] flex items-center gap-2">
+              <Volume2 className="w-5 h-5 text-[#30B54A]" />
+              <div className="flex flex-col">
+                <span className="text-[10px] font-bold uppercase text-gray-400">Audio Ready</span>
+                <audio src={recordedAudio} controls className="h-6 w-32" />
+              </div>
+              <button 
+                onClick={clearAudio}
+                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+        </div>
 
         <div className="flex items-end gap-2">
-          <div className="flex-1 bg-[#f5f5f0] rounded-2xl p-2 flex items-end gap-2 border border-gray-200 focus-within:border-[#30B54A] transition-colors">
-            <button 
-              onClick={() => fileInputRef.current?.click()}
-              className="p-2 text-gray-400 hover:text-[#30B54A] transition-colors"
-            >
-              <ImageIcon className="w-6 h-6" />
-            </button>
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSend();
-                }
-              }}
-              placeholder="Uliza swali..."
-              className="flex-1 bg-transparent border-none focus:ring-0 p-2 text-sm resize-none max-h-32 min-h-[40px]"
-              rows={1}
-            />
-          </div>
-          <button
-            onClick={handleSend}
-            disabled={isLoading || (!input.trim() && !selectedImage)}
-            className={cn(
-              "p-4 rounded-2xl transition-all",
-              isLoading || (!input.trim() && !selectedImage)
-                ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-                : "bg-[#30B54A] text-white shadow-lg hover:scale-105 active:scale-95"
-            )}
-          >
-            <Send className="w-5 h-5" />
-          </button>
+          {isRecording ? (
+            <div className="flex-1 bg-red-50 rounded-2xl p-3 flex items-center justify-between border border-red-200 animate-pulse">
+              <div className="flex items-center gap-3">
+                <div className="w-3 h-3 bg-red-500 rounded-full animate-ping" />
+                <span className="text-sm font-bold text-red-600">Recording... {formatTime(recordingTime)}</span>
+              </div>
+              <button 
+                onClick={stopRecording}
+                className="bg-red-500 text-white p-2 rounded-full hover:bg-red-600 transition-colors"
+              >
+                <Square className="w-4 h-4 fill-current" />
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="flex-1 bg-[#f5f5f0] rounded-2xl p-2 flex items-end gap-2 border border-gray-200 focus-within:border-[#30B54A] transition-colors">
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="p-2 text-gray-400 hover:text-[#30B54A] transition-colors"
+                >
+                  <ImageIcon className="w-6 h-6" />
+                </button>
+                <button 
+                  onClick={startRecording}
+                  className="p-2 text-gray-400 hover:text-[#30B54A] transition-colors"
+                >
+                  <Mic className="w-6 h-6" />
+                </button>
+                <textarea
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSend();
+                    }
+                  }}
+                  placeholder="Uliza swali au rekodi sauti..."
+                  className="flex-1 bg-transparent border-none focus:ring-0 p-2 text-sm resize-none max-h-32 min-h-[40px]"
+                  rows={1}
+                />
+              </div>
+              <button
+                onClick={handleSend}
+                disabled={isLoading || (!input.trim() && !selectedImage && !recordedAudio)}
+                className={cn(
+                  "p-4 rounded-2xl transition-all",
+                  isLoading || (!input.trim() && !selectedImage && !recordedAudio)
+                    ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                    : "bg-[#30B54A] text-white shadow-lg hover:scale-105 active:scale-95"
+                )}
+              >
+                <Send className="w-5 h-5" />
+              </button>
+            </>
+          )}
         </div>
         <input 
           type="file" 
