@@ -170,11 +170,11 @@ export default function App() {
       {/* Header */}
       <header className="p-6 bg-white border-b border-gray-200 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-[#5A5A40] rounded-full flex items-center justify-center text-white">
+          <div className="w-10 h-10 bg-[#30B54A] rounded-full flex items-center justify-center text-white">
             <Leaf className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-xl font-bold serif text-[#5A5A40]">Mkulima AI</h1>
+            <h1 className="text-xl font-bold serif text-[#30B54A]">Mkulima AI</h1>
             <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold">Agricultural Assistant</p>
           </div>
         </div>
@@ -192,7 +192,7 @@ export default function App() {
           >
             <div className="flex items-center gap-2 mb-1">
               {msg.role === 'model' ? (
-                <Bot className="w-4 h-4 text-[#5A5A40]" />
+                <Bot className="w-4 h-4 text-[#30B54A]" />
               ) : (
                 <User className="w-4 h-4 text-gray-400" />
               )}
@@ -205,7 +205,7 @@ export default function App() {
               className={cn(
                 "p-4 rounded-2xl shadow-sm",
                 msg.role === 'user' 
-                  ? "bg-[#5A5A40] text-white rounded-tr-none" 
+                  ? "bg-[#30B54A] text-white rounded-tr-none" 
                   : "bg-white text-gray-800 rounded-tl-none border border-gray-100"
               )}
             >
@@ -256,7 +256,7 @@ export default function App() {
             <img 
               src={selectedImage} 
               alt="Preview" 
-              className="w-20 h-20 object-cover rounded-xl border-2 border-[#5A5A40]"
+              className="w-20 h-20 object-cover rounded-xl border-2 border-[#30B54A]"
               referrerPolicy="no-referrer"
             />
             <button 
@@ -269,10 +269,10 @@ export default function App() {
         )}
 
         <div className="flex items-end gap-2">
-          <div className="flex-1 bg-[#f5f5f0] rounded-2xl p-2 flex items-end gap-2 border border-gray-200 focus-within:border-[#5A5A40] transition-colors">
+          <div className="flex-1 bg-[#f5f5f0] rounded-2xl p-2 flex items-end gap-2 border border-gray-200 focus-within:border-[#30B54A] transition-colors">
             <button 
               onClick={() => fileInputRef.current?.click()}
-              className="p-2 text-gray-400 hover:text-[#5A5A40] transition-colors"
+              className="p-2 text-gray-400 hover:text-[#30B54A] transition-colors"
             >
               <ImageIcon className="w-6 h-6" />
             </button>
@@ -297,7 +297,7 @@ export default function App() {
               "p-4 rounded-2xl transition-all",
               isLoading || (!input.trim() && !selectedImage)
                 ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-                : "bg-[#5A5A40] text-white shadow-lg hover:scale-105 active:scale-95"
+                : "bg-[#30B54A] text-white shadow-lg hover:scale-105 active:scale-95"
             )}
           >
             <Send className="w-5 h-5" />
